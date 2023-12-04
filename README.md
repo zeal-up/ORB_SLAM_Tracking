@@ -2,6 +2,12 @@
 
 ## demo -- initialization
 
+代码克隆——有子仓库
+
+```bash
+git clone --recursive url
+```
+
 主文件
 
 `./demo/demo_initialization.cpp`

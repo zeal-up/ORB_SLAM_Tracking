@@ -75,9 +75,9 @@ bool Initializer::Initialize(const Frame& currentFrame, const std::vector<int>& 
   Eigen::Matrix3f H, F;
 
   // 启动线程来估计H、F矩阵
-  std::thread threadH(&Initializer::FindHomography, this, std::ref(vbMatchesInliersH), std::ref(SH),
+  std::thread threadH(&Initializer::FindHomographyCV, this, std::ref(vbMatchesInliersH), std::ref(SH),
                       std::ref(H));
-  std::thread threadF(&Initializer::FindFundamental, this, std::ref(vbMatchesInliersF),
+  std::thread threadF(&Initializer::FindFundamentalCV, this, std::ref(vbMatchesInliersF),
                       std::ref(SF), std::ref(F));
 
   // 等待线程结束
@@ -123,6 +123,48 @@ bool Initializer::Initialize(const Frame& currentFrame, const std::vector<int>& 
 
   return true;
 }  // function Initialize
+
+void Initializer::FindHomographyCV(std::vector<bool>& vbMatchesInliers, float& score,
+                                   Eigen::Matrix3f& H21) {
+  // 直接通过OpenCV接口估计单应性矩阵
+  std::vector<cv::Point2f> srcPoints, dstPoints;
+  for (size_t matchIdx = 0; matchIdx < mvMatches12.size(); matchIdx++) {
+    const size_t idx1 = mvMatches12[matchIdx].first;
+    const size_t idx2 = mvMatches12[matchIdx].second;
+
+    const cv::KeyPoint& kp1 = mvKeys1[idx1];
+    const cv::KeyPoint& kp2 = mvKeys2[idx2];
+
+    srcPoints.push_back(kp1.pt);
+    dstPoints.push_back(kp2.pt);
+  }
+
+  cv::Mat H21Mat;
+  cv::Mat maskUnused_;
+  H21Mat = cv::findHomography(srcPoints, dstPoints, cv::RANSAC, 2, maskUnused_, 10000, 0.999);
+  H21 = Converter::toMatrix3f(H21Mat);
+  score = CheckHomography(H21, H21.inverse(), vbMatchesInliers, mSigma);
+
+}
+
+void Initializer::FindFundamentalCV(std::vector<bool> &vbMatchesInliers, float &score, Eigen::Matrix3f &F21) {
+  // 直接通过Opencv接口估计基础矩阵
+  std::vector<cv::Point2f> srcPoints, dstPoints;
+  for (size_t matchIdx = 0; matchIdx < mvMatches12.size(); matchIdx++) {
+    const size_t idx1 = mvMatches12[matchIdx].first;
+    const size_t idx2 = mvMatches12[matchIdx].second;
+
+    const cv::KeyPoint& kp1 = mvKeys1[idx1];
+    const cv::KeyPoint& kp2 = mvKeys2[idx2];
+
+    srcPoints.push_back(kp1.pt);
+    dstPoints.push_back(kp2.pt);
+  }
+  cv::Mat F21Mat;
+  F21Mat = cv::findFundamentalMat(srcPoints, dstPoints, cv::FM_RANSAC, 1.95, 0.999);
+  F21 = Converter::toMatrix3f(F21Mat);
+  score = CheckFundamental(F21, vbMatchesInliers, mSigma);
+}
 
 void Initializer::FindHomography(std::vector<bool>& vbMatchesInliers, float& score,
                                  Eigen::Matrix3f& H21) {
@@ -595,9 +637,16 @@ int Initializer::CheckRT(const cv::Mat& R21, const cv::Mat& t21,
     // 过滤数值不合理的3D点
     if (!isfinite(x3Dc1.at<float>(0)) || !isfinite(x3Dc1.at<float>(1)) ||
         !isfinite(x3Dc1.at<float>(2))) {
-      vbTriGood[i] = false;
+      vbTriGood[vMatches12[i].first] = false;
       continue;
     }
+
+    // 过滤掉（0,0,0）的点
+    if (x3Dc1.at<float>(0) == 0 && x3Dc1.at<float>(1) == 0 && x3Dc1.at<float>(2) == 0) {
+      vbTriGood[vMatches12[i].first] = false;
+      continue;
+    }
+
 
     // ------------------- 3.1 计算3D点到两个相机光心的余弦值 -------------------
     // 3D点到相机1,2光心的向量
@@ -641,10 +690,10 @@ int Initializer::CheckRT(const cv::Mat& R21, const cv::Mat& t21,
 
     // ------------------- 3.4 接收内点 -------------------
     vCosParallax.push_back(cosParallax);
-    vP3D[vIndices[i]] = cv::Point3f(x3Dc1n.at<float>(0), x3Dc1n.at<float>(1), x3Dc1n.at<float>(2));
+    vP3D[vMatches12[i].first] = cv::Point3f(x3Dc1n.at<float>(0), x3Dc1n.at<float>(1), x3Dc1n.at<float>(2));
     nGood++;
     if (cosParallax < 0.99998) {
-      vbTriGood[i] = true;
+      vbTriGood[vMatches12[i].first] = true;
     }
 
   }  // 遍历重建后的3D点

@@ -183,5 +183,12 @@ bool TryToInitialize(cv::Mat im1, cv::Mat im2, Settings& settings) {
   DUtilsCV::GUI::tWinHandler win3("ImageWithTriangulatedPoints");
   if (DISPLAY) DUtilsCV::GUI::showImage(imageWithTriangulatedPoints, true, &win3, 0);
 
+  // save the triangulated points
+  std::ofstream triangulatedPointsFile("triangulatedPoints.txt");
+  for (size_t i = 0; i < vP3D.size(); i++) {
+    if (vbTriangulated[i])
+      triangulatedPointsFile << vP3D[i].x << "," << vP3D[i].y << "," << vP3D[i].z << std::endl;
+  }
+
   return true;
 }

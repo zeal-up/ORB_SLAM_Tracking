@@ -46,6 +46,9 @@ class Initializer {
    */
   void FindHomography(std::vector<bool> &vbMatchesInliers, float &score, Eigen::Matrix3f &H21);
 
+  void FindHomographyCV(std::vector<bool> &vbMatchesInliers, float &score, Eigen::Matrix3f &H21);
+
+
   /**
    * 寻找基础矩阵
    * @param vbMatchesInliers 匹配点是否为内点的标志向量[Output]
@@ -54,6 +57,9 @@ class Initializer {
    * 所以最终求出来的T是世界坐标系到相机坐标系的变换矩阵Tcw[Output]
    */
   void FindFundamental(std::vector<bool> &vbMatchesInliers, float &score, Eigen::Matrix3f &F21);
+
+  void FindFundamentalCV(std::vector<bool> &vbMatchesInliers, float &score, Eigen::Matrix3f &F21);
+
 
   /**
    * @brief 计算单应矩阵的分数。将F1的关键点投影到F2上计算重投影误差+将F2的关键点投影到F1上计算重投影误差
