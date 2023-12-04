@@ -2,11 +2,20 @@ cmake_minimum_required(VERSION 2.8.12)
 project(orb_slam_tracking)
 
 # Set the C++ standard to C++17
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
+
+if (CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.1)
+  message(FATAL_ERROR "Insufficient g++ version, must >= 9.1 to support filesystem")
+
+endif()
 
 # Set the build type to Release (with optimizations) by default
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
+endif()
+
+if(NOT BUILD_TEST)
+  set(BUILD_TEST OFF)
 endif()
 
 # Find OpenCV
@@ -21,47 +30,55 @@ include_directories(${EIGEN3_INCLUDE_DIRS})
 find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
 
+# Find glog
+set(Glog_DIR "/usr/lib/x86_64-linux-gnu/cmake/glog")
+find_package(Glog REQUIRED)
+include_directories(${GLOG_INCLUDE_DIRS})
+# message GLOG_FOUND
+message(STATUS "GLOG_FOUND: ${Glog_FOUND}")
+
 # 添加DBoW2库
 add_subdirectory(Thirdparty/DBoW2)
 include_directories(${DBoW2_INCLUDE_DIRS})
-# 打印DBoW2库的头文件路径
-message(STATUS "DBoW2_INCLUDE_DIRS: ${DBoW2_INCLUDE_DIRS}")
 
 # 添加DLib库
 add_subdirectory(Thirdparty/DLib)
 include_directories(${DLib_INCLUDE_DIRS})
+
+# 添加g2o库
+option(G2O_BUILD_EXAMPLES "Build g2o examples" OFF)
+add_subdirectory(Thirdparty/g2o-20230806_git)
 
 # 将项目目录添加到头文件搜索路径
 include_directories(${PROJECT_SOURCE_DIR})
 
 # 添加SlamTypes库
 include_directories(SlamTypes)
-add_library(
-  SlamTypesLib
-  SlamTypes/Frame.cpp)
-target_link_libraries(SlamTypesLib ${OpenCV_LIBS} ${EIGEN3_LIBS} DBoW2 DLib)
-
-# 添加Features库
-# 设置Features库的头文件路径
 include_directories(Features)
 add_library(
-  FeaturesLib
+  SlamTypesLib
+  SlamTypes/MapPoint.cpp
+  SlamTypes/Frame.cpp
+  SlamTypes/KeyFrame.cpp
+  SlamTypes/Map.cpp
+  SlamTypes/BuildLocalMap.cpp
   Features/ORBextractor.cpp
   Features/ORBmatcher.cpp)
-target_link_libraries(FeaturesLib ${OpenCV_LIBS} DBoW2 SlamTypesLib)
+target_link_libraries(SlamTypesLib ${OpenCV_LIBS} ${EIGEN3_LIBS} glog DBoW2 DLib UtilsLib)
 
 # 添加Initialization库
 include_directories(Initialization)
 add_library(
   InitializationLib
   Initialization/Initializer.cpp)
-target_link_libraries(InitializationLib ${OpenCV_LIBS} ${EIGEN3_LIBS} SlamTypesLib)
+target_link_libraries(InitializationLib ${OpenCV_LIBS} ${EIGEN3_LIBS} SlamTypesLib glog)
 
 # 添加Utils库
 include_directories(Utils)
 add_library(
   UtilsLib
-  Utils/Converter.cpp)
+  Utils/Converter.cpp
+  Utils/UtilsCV.cpp)
 target_link_libraries(UtilsLib ${OpenCV_LIBS} ${EIGEN3_LIBS})
 
 # Build the demo_ORBextractor executable
@@ -71,7 +88,7 @@ target_link_libraries(
   ${OpenCV_LIBS}
   ${EIGEN3_LIBS}
   DBoW2
-  FeaturesLib
+  SlamTypesLib
 )
 
 # Build the demo_initialization executable
@@ -80,18 +97,49 @@ target_link_libraries(
   demo_initialization
   ${OpenCV_LIBS}
   ${EIGEN3_LIBS}
+  glog
   DBoW2
   DLib
   SlamTypesLib
-  FeaturesLib
   InitializationLib
   UtilsLib
 )
 
-# 将初始化demo的两张图片复制到编译后的二进制目录
-# file(COPY demo/init_01.png DESTINATION ${CMAKE_BINARY_DIR})
-# file(COPY demo/init_02.png DESTINATION ${CMAKE_BINARY_DIR})
-file(COPY demo/initImages DESTINATION ${CMAKE_BINARY_DIR})
+# ORB_SLAM2 的原始实现
+add_library(
+  ORB_SLAM2_Lib
+  SlamTypes/Frame2.cc
+  Features/ORBextractor2.cc
+  Features/ORBmatcher2.cc
+  Initialization/Initializer2.cc
+)
+target_link_libraries(
+  ORB_SLAM2_Lib
+  ${OpenCV_LIBS}
+  ${EIGEN3_LIBS}
+  DBoW2
+  DLib
+  UtilsLib
+)
+add_executable(demo_initialization_origin demo/demo_initialization_origin.cpp)
+target_link_libraries(
+  demo_initialization_origin
+  ${OpenCV_LIBS}
+  ${EIGEN3_LIBS}
+  glog
+  DBoW2
+  DLib
+  SlamTypesLib
+  InitializationLib
+  UtilsLib
+  ORB_SLAM2_Lib
+)
 
-# 将Settings.yaml复制到编译后的二进制目录
-file(COPY Settings.yaml DESTINATION ${CMAKE_BINARY_DIR})
+# Build tests
+if(BUILD_TEST)
+  add_subdirectory(test)
+endif()
+
+
+# copy orb extractor test image
+file(COPY demo/orbtest.png DESTINATION ${CMAKE_BINARY_DIR})

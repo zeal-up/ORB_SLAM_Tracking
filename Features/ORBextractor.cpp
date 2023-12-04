@@ -546,7 +546,7 @@ ORBextractor::ORBextractor(int nfeatures, float scaleFactor, int nlevels,
   // 最后一层分到剩下的特征点个数，保证所有层的特征点个数和起来等于nfeatures
   mnFeaturesPerLevel[nlevels - 1] = std::max(nfeatures - sumFeatures, 0);
   sumFeatures += mnFeaturesPerLevel[nlevels - 1];
-  std::cout << "Sum of features = " << sumFeatures << std::endl;
+  std::cout << __FUNCTION__ << "Sum of features = " << sumFeatures << std::endl;
 
   // 计算BRIEF特征描述子时采样点集的点的个数（256*2）
   const int npoints = 512;

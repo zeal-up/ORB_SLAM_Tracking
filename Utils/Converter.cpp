@@ -48,6 +48,21 @@ Eigen::Vector3f Converter::toVector3f(const cv::Mat& cvMat3) {
   return v;
 } // toVector3f function
 
+Point3dT Converter::toPoint3dT(const cv::Point3f& cvPoint3f) {
+  Point3dT p;
+
+  p << cvPoint3f.x, cvPoint3f.y, cvPoint3f.z;
+
+  return p;
+} // toPoint3dT function
+
+PoseT Converter::toPoseT(const g2o::SE3Quat& se3) {
+  // PoseT is Eigen::Affine3d
+  Eigen::Affine3d eT;
+  eT = se3.to_homogeneous_matrix();
+  return eT;
+} // toPoseT function
+
 
 // -------------------------- end to Eigen Matrix -------------------------
 
@@ -70,7 +85,26 @@ cv::Mat Converter::toCvMat3(const Eigen::Matrix3f& eMat3) {
 
 } // toCvMat3 function
 
+std::vector<cv::Mat> Converter::toDescriptorVector(const cv::Mat& descriptors) {
+  std::vector<cv::Mat> vDesc;
+  vDesc.reserve(descriptors.rows);
+  for (int i = 0; i < descriptors.rows; i++) {
+    vDesc.push_back(descriptors.row(i));
+  }
+  return vDesc;
+}  // toDescriptorVector function
+
 // ------------------------- end to cv::Mat ------------------------------
 
+
+// ------------------------- to g2o types --------------------------------
+
+g2o::SE3Quat Converter::toSE3Quat(const PoseT& pose) {
+  Eigen::Matrix3d R = pose.rotation().matrix();
+  Eigen::Vector3d t = pose.translation();
+  return g2o::SE3Quat(R, t);
+}  // toSE3Quat function
+
+// ------------------------- end to g2o types ----------------------------
 
 }  // namespace ORB_SLAM_Tracking

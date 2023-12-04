@@ -36,7 +36,14 @@ class Settings {
     k2 = fsSettings["Camera.k2"];
     p1 = fsSettings["Camera.p1"];
     p2 = fsSettings["Camera.p2"];
-    mDistCoef = (cv::Mat_<float>(4, 1) << k1, k2, p1, p2);
+    k3 = 0;
+    k3 = fsSettings["Camera.k3"];
+    if (k3 != 0) {
+      mDistCoef = (cv::Mat_<float>(4, 1) << k1, k2, p1, p2, k3);
+    } else {
+      mDistCoef = (cv::Mat_<float>(4, 1) << k1, k2, p1, p2);
+    }
+      
 
     // Camera frames per second
     fps = fsSettings["Camera.fps"];
@@ -74,8 +81,6 @@ class Settings {
     nLevels = fsSettings["ORBextractor.nLevels"];
     iniThFAST = fsSettings["ORBextractor.iniThFAST"];
     minThFAST = fsSettings["ORBextractor.minThFAST"];
-    scoreType = fsSettings["ORBextractor.scoreType"];
-    assert(scoreType == 0 || scoreType == 1);
 
     // print ORB settings
     std::cout << std::endl << "ORB Parameters: " << std::endl;
@@ -84,11 +89,6 @@ class Settings {
     std::cout << "- nLevels: " << nLevels << std::endl;
     std::cout << "- iniThFAST: " << iniThFAST << std::endl;
     std::cout << "- minThFAST: " << minThFAST << std::endl;
-    if (scoreType == 0) {
-      std::cout << "- scoreType: Harris" << std::endl;
-    } else if (scoreType == 1) {
-      std::cout << "- scoreType: FAST" << std::endl;
-    }
 
     fsSettings.release();
 
@@ -105,7 +105,7 @@ class Settings {
   cv::Mat mK;
 
   // Camera distortion parameters
-  float k1, k2, p1, p2;
+  float k1, k2, p1, p2, k3;
   cv::Mat mDistCoef;
 
   // Camera frames per second
@@ -121,7 +121,6 @@ class Settings {
   int nLevels;        // Number of levels in the scale pyramid
   int iniThFAST;      // ORB iniThFAST; First try to extract features with this threshold
   int minThFAST;      // ORB minThFAST; If extract too few features, decrease threshold as this
-  int scoreType;      // 0 -> Harris Score, 1 -> FAST Score
 
   // Max/Min frames to insert keyframes
   int maxFrames;

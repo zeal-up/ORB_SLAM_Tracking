@@ -1,4 +1,6 @@
 #include "SlamTypes/Frame.hpp"
+#include "SlamTypes/MapPoint.hpp"
+#include "Utils/Converter.hpp"
 
 namespace ORB_SLAM_Tracking {
 float Frame::fx, Frame::fy, Frame::cx, Frame::cy;
@@ -11,40 +13,47 @@ Frame::Frame() {}
 
 // copy constructor
 Frame::Frame(const Frame& frame) {
-    im = frame.im.clone();
-    mTimestamp = frame.mTimestamp;
-    mpORBextractor = frame.mpORBextractor;
-    mpORBvocabulary = frame.mpORBvocabulary;
-    mK = frame.mK.clone();
-    mDistCoef = frame.mDistCoef.clone();
-    mvKeys = frame.mvKeys;
-    mDescriptors = frame.mDescriptors.clone();
-    N = frame.N;
-    mvKeysUn = frame.mvKeysUn;
-    mnId = frame.mnId;
-    mvbOutlier = frame.mvbOutlier;
-    mvpMapPoints = frame.mvpMapPoints;
+  im = frame.im.clone();
+  mTimestamp = frame.mTimestamp;
+  mpORBextractor = frame.mpORBextractor;
+  mpORBvocabulary = frame.mpORBvocabulary;
+  mK = frame.mK.clone();
+  mDistCoef = frame.mDistCoef.clone();
+  mvKeys = frame.mvKeys;
+  mDescriptors = frame.mDescriptors.clone();
+  N = frame.N;
+  mvKeysUn = frame.mvKeysUn;
+  mnId = frame.mnId;
+  mvbOutlier = frame.mvbOutlier;
+  mvpMapPoints = frame.mvpMapPoints;
 
-    for (int i = 0; i < FRAME_GRID_COLS; i++) {
-        for (int j = 0; j < FRAME_GRID_ROWS; j++) {
-            mGrid[i][j] = frame.mGrid[i][j];
-        }
+  for (int i = 0; i < FRAME_GRID_COLS; i++) {
+    for (int j = 0; j < FRAME_GRID_ROWS; j++) {
+      mGrid[i][j] = frame.mGrid[i][j];
     }
+  }
 
-    // set pose
-    if (frame.mbPoseSet) {
-        SetPose(frame.mTcw);
-    }
+  // set pose
+  if (frame.mbPoseSet) {
+    SetPose(frame.mTcw);
+  }
 }
 
-Frame::Frame(cv::Mat& im, const double& timestamp, ORBextractor* extractor, ORBVocabulary* voc, cv::Mat& K,
-             cv::Mat& distCoef)
-    : im(im), mTimestamp(timestamp), mpORBextractor(extractor), mpORBvocabulary(voc), mK(K), mDistCoef(distCoef) {
+Frame::Frame(cv::Mat& im, const double& timestamp, ORBextractor* extractor, ORBVocabulary* voc,
+             cv::Mat& K, cv::Mat& distCoef)
+    : im(im),
+      mTimestamp(timestamp),
+      mpORBextractor(extractor),
+      mpORBvocabulary(voc),
+      mK(K),
+      mDistCoef(distCoef) {
   // 当第一帧时计算一些静态变量 —— 主要是一些图像参数
   if (mbInitialComputations) {
     ComputeImageBounds();
-    mfGridElementWidthInv = static_cast<float>(FRAME_GRID_COLS) / static_cast<float>(mnMaxX - mnMinX);
-    mfGridElementHeightInv = static_cast<float>(FRAME_GRID_ROWS) / static_cast<float>(mnMaxY - mnMinY);
+    mfGridElementWidthInv =
+        static_cast<float>(FRAME_GRID_COLS) / static_cast<float>(mnMaxX - mnMinX);
+    mfGridElementHeightInv =
+        static_cast<float>(FRAME_GRID_ROWS) / static_cast<float>(mnMaxY - mnMinY);
 
     fx = mK.at<float>(0, 0);
     fy = mK.at<float>(1, 1);
@@ -55,7 +64,7 @@ Frame::Frame(cv::Mat& im, const double& timestamp, ORBextractor* extractor, ORBV
   }
 
   // 提取ORB特征 —— 调用ORBextractor::operator()()函数
-  std::vector<int> unused{0,0};
+  std::vector<int> unused{0, 0};
   (*mpORBextractor)(im, cv::Mat(), mvKeys, mDescriptors, unused);
   N = mvKeys.size();
   if (mvKeys.empty()) return;
@@ -82,9 +91,23 @@ Frame::Frame(cv::Mat& im, const double& timestamp, ORBextractor* extractor, ORBV
 }
 
 void Frame::SetPose(const PoseT& Tcw) {
+  std::lock_guard<std::mutex> lock(mMutexPose);
   mTcw = Tcw;
   mbPoseSet = true;
 }
+
+PoseT Frame::GetPose() {
+  std::lock_guard<std::mutex> lock(mMutexPose);
+  return mTcw;
+}
+
+Point3dT Frame::GetCameraCenter() {
+  std::lock_guard<std::mutex> lock(mMutexPose);
+  // Tcw 是向量从世界坐标系到相机坐标系的变换矩阵
+  // 要求相机中心在世界坐标系中的坐标：Ow = -R^T * t
+  // 等价于：Ow = Tcw.inverse().translation()
+  return mTcw.rotation().transpose() * mTcw.translation();
+} // GetCameraCenter
 
 bool Frame::PosInGrid(const cv::KeyPoint& kp, int& posX, int& posY) {
   posX = round((kp.pt.x - mnMinX) * mfGridElementWidthInv);
@@ -160,20 +183,22 @@ void Frame::UndistortKeyPoints() {
   }
 }
 
-std::vector<size_t> Frame::GetFeaturesInArea(const float& x, const float& y, const float& r, const int minLevel,
-                                             const int maxLevel) const {
+std::vector<size_t> Frame::GetFeaturesInArea(const float& x, const float& y, const float& r,
+                                             const int minLevel, const int maxLevel) const {
   std::vector<size_t> vIndices;
   vIndices.reserve(N);
   int mMinCellX = std::max(0, (int)floor((x - mnMinX - r) * mfGridElementWidthInv));
   if (mMinCellX >= FRAME_GRID_COLS) return vIndices;
 
-  int mMaxCellX = std::min((int)FRAME_GRID_COLS - 1, (int)ceil((x - mnMinX + r) * mfGridElementWidthInv));
+  int mMaxCellX =
+      std::min((int)FRAME_GRID_COLS - 1, (int)ceil((x - mnMinX + r) * mfGridElementWidthInv));
   if (mMaxCellX < 0) return vIndices;
 
   int nMinCellY = std::max(0, (int)floor((y - mnMinY - r) * mfGridElementHeightInv));
   if (nMinCellY >= FRAME_GRID_ROWS) return vIndices;
 
-  int nMaxCellY = std::min((int)FRAME_GRID_ROWS - 1, (int)ceil((y - mnMinY + r) * mfGridElementHeightInv));
+  int nMaxCellY =
+      std::min((int)FRAME_GRID_ROWS - 1, (int)ceil((y - mnMinY + r) * mfGridElementHeightInv));
   if (nMaxCellY < 0) return vIndices;
 
   bool bCheckLevels = (minLevel > 0) || (maxLevel >= 0);
@@ -204,5 +229,75 @@ std::vector<size_t> Frame::GetFeaturesInArea(const float& x, const float& y, con
   return vIndices;
 
 }  // function GetFeaturesInArea
+
+void Frame::ComputeBoW() {
+
+  if (mBowVec.empty()) {
+    // 如果BoW向量为空，则计算BoW向量
+    std::vector<cv::Mat> vCurrentDesc = Converter::toDescriptorVector(mDescriptors);
+    // Feature vector associate features with nodes in the 4th level (from leaves up)
+    // We assume the vocabulary tree has 6 levels, change the 4 otherwise
+    // ORBSLAM中使用的DBoW树一共6层，这里使用倒数第四层作为direct index的构建层
+    mpORBvocabulary->transform(vCurrentDesc, mBowVec, mFeatVec, 4);
+  }
+} // function ComputeBoW
+
+bool Frame::isInFrustum(MapPoint* pMP, float viewingCosLimit, float& outU, float& outV,
+                        float& outViewCos, int& outLevel) {
+  // Step 1 计算地图点在相机坐标系下的坐标 -------------------------------------
+  const Point3dT pw = pMP->GetWorldPos();
+  const Point3dT pc = mTcw * pw;
+  if (pc[2] < 0.0) return false;
+
+  // Step 2 投影到图像上 ------------------------------------------------------
+  const float invz = 1.0 / pc[2];
+  const float u = fx * pc[0] * invz + cx;
+  const float v = fy * pc[1] * invz + cy;
+  if (u < mnMinX || u > mnMaxX) return false;
+  if (v < mnMinY || v > mnMaxY) return false;
+
+  // Step 3 检查观测距离 ------------------------------------------------------
+  const float maxDistance = pMP->GetMaxDistanceInvariance();
+  const float minDistance = pMP->GetMinDistanceInvariance();
+  const Point3dT PO = pw - GetCameraCenter();
+  const float dist = PO.norm();
+
+  if (dist < minDistance || dist > maxDistance) return false;
+
+  // Step 4 检查观测角度 ------------------------------------------------------
+  const Point3dT pnormal = pMP->GetNormal();
+  const float viewCos = pnormal.dot(PO) / dist;
+  if (viewCos < viewingCosLimit) return false;
+
+  // Step 5 计算金字塔层级 ----------------------------------------------------
+  const float scaleFactor = mpORBextractor->GetScaleFactor();
+  const float nLevels = mpORBextractor->GetLevels();
+  const int level = pMP->PredictScale(dist, scaleFactor, nLevels);
+
+  // Step 6 计算成功，返回结果 -------------------------------------------------
+  outU = u;
+  outV = v;
+  outViewCos = viewCos;
+  outLevel = level;
+  return true;
+} // function isInFrustum
+
+int Frame::GetValidMapPointCount() {
+  std::lock_guard<std::mutex> lock(mMutexFeatures);
+  int nCount = 0;
+  const int N = mvpMapPoints.size();
+  for (int i = 0; i < N; i++) {
+    if (mvpMapPoints[i] && !mvbOutlier[i] && mvpMapPoints[i]->Observations() > 0) {
+      nCount++;
+    }
+  }
+  return nCount;
+} // function GetValidMapPointCount
+
+void Frame::EraseMapPoint(const size_t& idx) {
+  std::scoped_lock<std::mutex> lock(mMutexFeatures);
+  mvpMapPoints[idx] = nullptr;
+  mvbOutlier[idx] = false;
+}
 
 }  // namespace ORB_SLAM_Tracking

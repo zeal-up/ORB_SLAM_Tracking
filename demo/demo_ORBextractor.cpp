@@ -13,11 +13,11 @@
 using namespace ORB_SLAM_Tracking;
 
 int main() {
-  std::string test_img_file = "./init_01.png";
+  std::string test_img_file = "./orbtest.png";
   cv::Mat img = cv::imread(test_img_file, cv::IMREAD_GRAYSCALE);
   cv::Size imgSize(img.cols, img.rows);
 
-  ORBextractor orbExtractor(1250, 1.2, 8, 20, 7);
+  ORBextractor orbExtractor(2000, 1.2, 8, 20, 7);
 
   std::vector<cv::KeyPoint> keypoints;
   cv::Mat descriptors;

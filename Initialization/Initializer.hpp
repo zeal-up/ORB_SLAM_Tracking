@@ -10,6 +10,9 @@ class Initializer {
   typedef std::pair<int, int> Match;
 
  public:
+
+  // Debug
+  cv::Mat mF;
   /**
    * @brief Construct a new Initializer object
    *
@@ -32,7 +35,7 @@ class Initializer {
   bool Initialize(const Frame &currentFrame, const std::vector<int> &matches12, PoseT &Tcw,
                   std::vector<cv::Point3f> &vP3D, std::vector<bool> &vbTriangulated);
 
- private:
+ public:
   /**
    * 寻找单应性矩阵
    * Step 1 : 从mvSets中随机选取8个点，计算出单应性矩阵H21
@@ -46,6 +49,9 @@ class Initializer {
    */
   void FindHomography(std::vector<bool> &vbMatchesInliers, float &score, Eigen::Matrix3f &H21);
 
+  void FindHomographyCV(std::vector<bool> &vbMatchesInliers, float &score, Eigen::Matrix3f &H21);
+
+
   /**
    * 寻找基础矩阵
    * @param vbMatchesInliers 匹配点是否为内点的标志向量[Output]
@@ -54,6 +60,9 @@ class Initializer {
    * 所以最终求出来的T是世界坐标系到相机坐标系的变换矩阵Tcw[Output]
    */
   void FindFundamental(std::vector<bool> &vbMatchesInliers, float &score, Eigen::Matrix3f &F21);
+
+  void FindFundamentalCV(std::vector<bool> &vbMatchesInliers, float &score, Eigen::Matrix3f &F21);
+
 
   /**
    * @brief 计算单应矩阵的分数。将F1的关键点投影到F2上计算重投影误差+将F2的关键点投影到F1上计算重投影误差
@@ -170,10 +179,15 @@ class Initializer {
    * @param[out] parallax 视差（对重建点按照视差角排序，取第50个点的视差），单位：度
    * @return int 内点数量 可以通过内点数量来选择最优的R,t
    */
-  int CheckRT(const cv::Mat &R21, const cv::Mat &t21, const std::vector<cv::KeyPoint> &vKeys1,
+ public:
+  static int CheckRT(const cv::Mat &R21, const cv::Mat &t21, const std::vector<cv::KeyPoint> &vKeys1,
               const std::vector<cv::KeyPoint> &vKeys2, const std::vector<Match> &vMatches12,
               std::vector<bool> &vbMatchesInliers, const cv::Mat &K, std::vector<cv::Point3f> &vP3D, float th2,
               std::vector<bool> &vbTriangulated, float &parallax);
+
+  static int CheckRT2(const cv::Mat &R, const cv::Mat &t, const std::vector<cv::KeyPoint> &vKeys1, const std::vector<cv::KeyPoint> &vKeys2,
+                       const std::vector<Match> &vMatches12, std::vector<bool> &vbMatchesInliers,
+                       const cv::Mat &K, std::vector<cv::Point3f> &vP3D, float th2, std::vector<bool> &vbGood, float &parallax);
 
  private:
   // 参考帧的特征点

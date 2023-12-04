@@ -23,8 +23,12 @@ class Frame {
   Frame(const Frame& frame);
   Frame(cv::Mat& im, const double& timestamp, ORBextractor* extractor, ORBVocabulary* voc, cv::Mat& K,
         cv::Mat& distCoef);
+  // 因为有锁（没法进行拷贝），所以没法自动生成默认的赋值运算符
+  Frame& operator=(const Frame& frame) = delete;
 
-  
+  int GetId() const { return mnId; }
+  static void Reset() { nNextId = 0; }
+
   /**
    * 计算特征点被划分到哪个区域中
    * 
@@ -42,6 +46,19 @@ class Frame {
    */
   void SetPose(const PoseT& Tcw);
 
+	/**
+	 * @brief Get the Pose object
+	 * 
+	 * @return PoseT Tcw 世界坐标系到相机坐标系的变换矩阵
+	 */
+  PoseT GetPose();
+
+  // 获取当前帧的相机中心在世界坐标系下的坐标
+  // Tcw 是向量从世界坐标系到相机坐标系的变换矩阵
+  // 要求相机中心在世界坐标系中的坐标：Ow = -R^T * t
+  // 等价于：Ow = Tcw.inverse().translation()
+  Point3dT GetCameraCenter();
+
   /**
    * @brief 获取指定区域内的特征点索引
    * 
@@ -54,6 +71,42 @@ class Frame {
    */
   std::vector<size_t> GetFeaturesInArea(const float& x, const float& y, const float& r, const int minLevel = -1,
                                         const int maxLevel = -1) const;
+
+  void ComputeBoW();
+
+  // ----------------------- 地图点相关 --------------------------------------------
+
+  /**
+   * @brief 判断地图点是否在视野内：
+   * 1. 视野范围：投影点需要在图像范围内;
+   * 2. 距离范围：地图点到相机中心的距离需要在地图点的最大最小距离范围内;
+   * 3. 视角限制(默认60度内)：地图点与相机中心连线与地图点的平均观测方向的夹角需要在视角限制内
+   * 
+   * 这里的判断基本是根据ORB-SLAM1论文中的V-D章节
+   * 
+   * @param pMP 
+   * @param viewingCosLimit 观察角度的余弦值 相机光心与地图点连线，与地图点的平均观测方向的夹角
+   * @param outU 输出：地图点在图像上的投影坐标 u
+   * @param outV 输出：地图点在图像上的投影坐标 v
+   * @param outViewCos 输出：相机光心与地图点连线，与地图点的平均观测方向的夹角的余弦值
+   * @param outLevel 输出：地图点所在的金字塔层级
+   * @return true 
+   * @return false 
+   */
+  bool isInFrustum(MapPoint* pMP, float viewingCosLimit, float& outU, float& outV,
+                   float& outViewCos, int& outLevel);
+
+  bool isInFrustum(MapPoint* pMP, float viewingCosLimit) {
+    float u, v, viewCos;
+    int level;
+    return isInFrustum(pMP, viewingCosLimit, u, v, viewCos, level);
+  }
+
+  // 获取有效的关联地图点数量：1.非空; 2.不是外点; 3.观测数>0
+  int GetValidMapPointCount();
+
+  // 将序号为idx的地图点置为空
+  void EraseMapPoint(const size_t& idx);
 
  public:
   ORBVocabulary* mpORBvocabulary;
@@ -80,13 +133,7 @@ class Frame {
   // Feature vector (store the direct-index)
   DBoW2::FeatureVector mFeatVec;
   // ORB descriptors, each row associated to a keypoint
-  cv::Mat mDescriptors;
-
-  // Current and Next Frame id
-  // Next Frame id; static member to share between all frames
-  static long unsigned int nNextId;  
-  // Current Frame id
-  long unsigned int mnId;            
+  cv::Mat mDescriptors;    
 
   // 地图点相关
   std::vector<MapPoint*> mvpMapPoints;  // 地图点 —— 存储的是指针，指向地图中的3D点
@@ -118,6 +165,16 @@ class Frame {
   PoseT mTcw;
   bool mbPoseSet = false;
 
+ private:
+  // Current and Next Frame id
+  // Next Frame id; static member to share between all frames
+  static long unsigned int nNextId;  
+  // Current Frame id
+  long unsigned int mnId;
+
+	// 互斥锁
+	std::mutex mMutexPose;
+  std::mutex mMutexFeatures;
 
  private:
   /**
@@ -134,5 +191,7 @@ class Frame {
    */
   void ComputeImageBounds();
 };
+
+typedef std::shared_ptr<Frame> FramePtr;
 
 }  // namespace ORB_SLAM_Tracking
