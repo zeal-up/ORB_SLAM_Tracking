@@ -1,0 +1,3 @@
+[submodule "Thirdparty/DLib"]
+	path = Thirdparty/DLib
+	url = git@github.com:zeal-up/DLib.git
